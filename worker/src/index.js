@@ -4,6 +4,7 @@
  */
 
 import { handleAuth } from './handlers/auth';
+import { handleUser } from './handlers/user';
 import { handleHome } from './handlers/home';
 import { handleCard } from './handlers/card';
 import { handleDependants } from './handlers/dependants';
@@ -49,12 +50,20 @@ export default {
       const route = `${method} ${path}`;
 
       // Authentication endpoints (no JWT required)
-      if (path === '/api/auth/register' && method === 'POST') {
-        return handleAuth.register(request, env, requestId);
+      if (path === '/api/auth/register/id' && method === 'POST') {
+        return handleAuth.registerById(request, env, requestId);
+      }
+
+      if (path === '/api/auth/register/membership' && method === 'POST') {
+        return handleAuth.registerByMembership(request, env, requestId);
       }
 
       if (path === '/api/auth/login' && method === 'POST') {
         return handleAuth.login(request, env, requestId);
+      }
+
+      if (path === '/api/auth/refresh' && method === 'POST') {
+        return handleAuth.refresh(request, env, requestId);
       }
 
       // Protected endpoints (JWT required)
@@ -66,6 +75,25 @@ export default {
       // Verify JWT (we trust our Core API's tokens)
       // In production, you might want to verify the token here or forward to Core API
       // For now, we'll just extract it and pass it along
+
+      // Logout (requires JWT)
+      if (path === '/api/auth/logout' && method === 'POST') {
+        return handleAuth.logout(request, env, requestId, token);
+      }
+
+      // User profile
+      if (path === '/api/me' && method === 'GET') {
+        return handleUser.getProfile(request, env, requestId, token);
+      }
+
+      if (path === '/api/me' && method === 'PATCH') {
+        return handleUser.updateProfile(request, env, requestId, token);
+      }
+
+      // Package information
+      if (path === '/api/packages/current' && method === 'GET') {
+        return handleUser.getCurrentPackage(request, env, requestId, token);
+      }
 
       // Home dashboard
       if (path === '/api/home' && method === 'GET') {
