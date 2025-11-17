@@ -15,8 +15,9 @@ module.exports = {
   },
 
   legacy: {
+    scheme: process.env.BH_SCHEME,
+    apiKey: process.env.BH_API_KEY,
     apiUrl: process.env.LEGACY_API_URL,
-    apiKey: process.env.LEGACY_API_KEY,
     soapEndpoint: process.env.LEGACY_SOAP_ENDPOINT,
     db: {
       host: process.env.LEGACY_DB_HOST,

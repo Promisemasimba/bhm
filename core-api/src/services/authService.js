@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const legacyClient = require('../clients/legacyClient');
+const membershipService = require('./membershipService');
 const config = require('../config');
 const logger = require('../config/logger');
 
@@ -43,8 +43,8 @@ class AuthService {
       throw error;
     }
 
-    // Query legacy system based on mode
-    let legacyMember;
+    // Query synced member database based on mode
+    let member;
     try {
       if (mode === 'id') {
         if (!idNumber) {
@@ -52,37 +52,37 @@ class AuthService {
           error.status = 400;
           throw error;
         }
-        legacyMember = await legacyClient.findMemberByIdNumber(idNumber);
+        member = await membershipService.findMemberByNationalId(idNumber);
       } else if (mode === 'memberNumber') {
         if (!memberNumber) {
           const error = new Error('Member number is required for memberNumber mode');
           error.status = 400;
           throw error;
         }
-        legacyMember = await legacyClient.findMemberByMemberNumber(memberNumber);
+        member = await membershipService.findMemberByMemberNo(memberNumber);
       }
     } catch (error) {
-      logger.error('Legacy system error during registration', { mode, error: error.message });
+      logger.error('Database error during registration', { mode, error: error.message });
       const err = new Error('Unable to verify membership. Please try again later.');
       err.status = 503;
       throw err;
     }
 
-    // Validate legacy member exists and is active
-    if (!legacyMember) {
+    // Validate member exists and is active
+    if (!member) {
       const error = new Error('No active membership found with the provided information');
       error.status = 404;
       throw error;
     }
 
-    if (legacyMember.status !== 'active' && legacyMember.status !== 'Active') {
-      const error = new Error('Membership is not active. Please contact support.');
+    if (member.member_status !== 'Active') {
+      const error = new Error(`Membership is not active (status: ${member.member_status}). Please contact support.`);
       error.status = 403;
       throw error;
     }
 
     // Check if this legacy member is already registered
-    const existingUser = await User.findByLegacyMemberId(legacyMember.id);
+    const existingUser = await User.findByLegacyMemberId(member.legacy_member_id.toString());
     if (existingUser) {
       const error = new Error('This membership is already registered. Please login instead.');
       error.status = 409;
@@ -94,15 +94,16 @@ class AuthService {
       username,
       email,
       password,
-      legacyMemberId: legacyMember.id,
-      idNumber: mode === 'id' ? idNumber : legacyMember.idNumber,
-      memberNumber: mode === 'memberNumber' ? memberNumber : legacyMember.memberNumber,
+      legacyMemberId: member.legacy_member_id.toString(),
+      idNumber: member.national_id_no,
+      memberNumber: member.member_no,
     });
 
     logger.info('User registered successfully', {
       userId: user.id,
       username: user.username,
-      legacyMemberId: legacyMember.id,
+      legacyMemberId: member.legacy_member_id,
+      memberNo: member.member_no,
     });
 
     // Generate JWT token
@@ -113,7 +114,9 @@ class AuthService {
         id: user.id,
         username: user.username,
         email: user.email,
-        memberNumber: legacyMember.memberNumber,
+        memberNumber: member.member_no,
+        firstName: member.firstname,
+        lastName: member.surname,
       },
       token,
     };

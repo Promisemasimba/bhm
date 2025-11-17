@@ -51,6 +51,50 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 CREATE INDEX idx_user_profiles_id_number ON user_profiles(id_number);
 CREATE INDEX idx_user_profiles_member_number ON user_profiles(member_number);
 
+-- Members table (synced from legacy system)
+-- This is a local copy of membership data for fast lookups during registration
+-- Updated periodically via sync job
+CREATE TABLE IF NOT EXISTS members (
+  id BIGSERIAL PRIMARY KEY,
+  legacy_member_id BIGINT UNIQUE NOT NULL,
+  segregated_fund TEXT,
+  title TEXT,
+  member_no TEXT,
+  suffix TEXT,
+  firstname TEXT,
+  initials TEXT,
+  surname TEXT,
+  sex TEXT,
+  nationality TEXT,
+  occupation TEXT,
+  member_status TEXT,
+  date_of_birth DATE,
+  date_of_joining DATE,
+  date_of_resigning DATE,
+  national_id_no TEXT,
+  plan TEXT,
+  is_dependant BOOLEAN DEFAULT false,
+  cellphone_no TEXT,
+  email_address TEXT,
+  email_address2 TEXT,
+  company TEXT,
+  notes TEXT,
+  parent_legacy_id BIGINT,
+  synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_members_national_id ON members (national_id_no) WHERE is_dependant = false;
+CREATE INDEX idx_members_member_no ON members (member_no) WHERE is_dependant = false;
+CREATE INDEX idx_members_legacy_member_id ON members (legacy_member_id);
+CREATE INDEX idx_members_parent_legacy_id ON members (parent_legacy_id) WHERE is_dependant = true;
+CREATE INDEX idx_members_status ON members (member_status);
+CREATE INDEX idx_members_company ON members (company);
+
+CREATE TRIGGER update_members_updated_at BEFORE UPDATE ON members
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Claims cache (local copy for performance)
 CREATE TABLE IF NOT EXISTS claims (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

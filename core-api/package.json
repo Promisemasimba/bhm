@@ -9,7 +9,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "db:migrate": "node src/db/migrate.js",
-    "db:seed": "node src/db/seed.js"
+    "db:seed": "node src/db/seed.js",
+    "sync:members": "node src/jobs/syncMembersJob.js",
+    "sync:stats": "node -e 'require(\"./src/jobs/syncMembersJob\").getSyncStats().then(s => console.log(s))'"
   },
   "keywords": [
     "health",
