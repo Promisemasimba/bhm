@@ -1,0 +1,155 @@
+-- Budget Health Management Database Schema
+
+-- Users table (app accounts)
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username VARCHAR(100) UNIQUE NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  legacy_member_id VARCHAR(100),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TIMESTAMP,
+  CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_legacy_member_id ON users(legacy_member_id);
+
+-- User sessions table (for JWT refresh tokens)
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  refresh_token VARCHAR(500) UNIQUE NOT NULL,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ip_address VARCHAR(45),
+  user_agent TEXT
+);
+
+CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_refresh_token ON user_sessions(refresh_token);
+CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
+
+-- User profiles (additional info not in legacy)
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  first_name VARCHAR(100),
+  last_name VARCHAR(100),
+  phone_number VARCHAR(20),
+  date_of_birth DATE,
+  id_number VARCHAR(50),
+  member_number VARCHAR(50),
+  profile_image_url TEXT,
+  notification_preferences JSONB DEFAULT '{"email": true, "push": true, "sms": false}'::jsonb,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_profiles_id_number ON user_profiles(id_number);
+CREATE INDEX idx_user_profiles_member_number ON user_profiles(member_number);
+
+-- Claims cache (local copy for performance)
+CREATE TABLE IF NOT EXISTS claims (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  legacy_claim_id VARCHAR(100),
+  claim_number VARCHAR(100) UNIQUE,
+  claim_type VARCHAR(50),
+  provider_name VARCHAR(255),
+  claim_date DATE,
+  amount DECIMAL(10, 2),
+  status VARCHAR(50),
+  description TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_claims_user_id ON claims(user_id);
+CREATE INDEX idx_claims_claim_number ON claims(claim_number);
+CREATE INDEX idx_claims_legacy_claim_id ON claims(legacy_claim_id);
+CREATE INDEX idx_claims_status ON claims(status);
+CREATE INDEX idx_claims_claim_date ON claims(claim_date DESC);
+
+-- Claim documents
+CREATE TABLE IF NOT EXISTS claim_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  document_type VARCHAR(50),
+  file_name VARCHAR(255),
+  file_url TEXT,
+  file_size INTEGER,
+  mime_type VARCHAR(100),
+  uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_claim_documents_claim_id ON claim_documents(claim_id);
+
+-- Provider search cache
+CREATE TABLE IF NOT EXISTS providers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  legacy_provider_id VARCHAR(100) UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100),
+  specialties TEXT[],
+  address TEXT,
+  city VARCHAR(100),
+  province VARCHAR(100),
+  postal_code VARCHAR(20),
+  phone_number VARCHAR(20),
+  email VARCHAR(255),
+  location GEOGRAPHY(POINT, 4326), -- For geospatial queries
+  network_status VARCHAR(50),
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_providers_legacy_id ON providers(legacy_provider_id);
+CREATE INDEX idx_providers_name ON providers USING gin(to_tsvector('english', name));
+CREATE INDEX idx_providers_city ON providers(city);
+CREATE INDEX idx_providers_province ON providers(province);
+CREATE INDEX idx_providers_type ON providers(type);
+CREATE INDEX idx_providers_location ON providers USING GIST(location);
+
+-- Audit log
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  entity_type VARCHAR(100),
+  entity_id VARCHAR(100),
+  details JSONB,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Triggers for updated_at
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_claims_updated_at BEFORE UPDATE ON claims
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_providers_updated_at BEFORE UPDATE ON providers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
