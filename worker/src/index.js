@@ -11,6 +11,7 @@ import { handleDependants } from './handlers/dependants';
 import { handleProviders } from './handlers/providers';
 import { handleClaims } from './handlers/claims';
 import { handleCertificate } from './handlers/certificate';
+import { handleSupport } from './handlers/support';
 import { verifyJWT, extractToken } from './utils/jwt';
 import { createResponse, errorResponse } from './utils/response';
 import { RateLimiter } from './utils/rateLimiter';
@@ -133,6 +134,11 @@ export default {
       // Membership certificate
       if (path === '/api/membership-certificate' && method === 'GET') {
         return handleCertificate(request, env, requestId, token);
+      }
+
+      // Support
+      if (path === '/api/support/contact-options' && method === 'GET') {
+        return handleSupport.getContactOptions(request, env, requestId, token);
       }
 
       // 404 Not Found
