@@ -6,6 +6,7 @@ class ProviderService {
   /**
    * Search for healthcare providers
    * Uses legacy system and local cache
+   * Returns OpenAPI-compliant paginated response
    */
   async searchProviders({ query, location, type, specialty, limit = 50, offset = 0 }) {
     try {
@@ -22,11 +23,30 @@ class ProviderService {
       // Cache providers in local DB for faster future lookups
       await this._cacheProviders(providers);
 
+      // Note: Legacy system doesn't return total count, so we estimate
+      const total = providers.length === limit ? offset + limit + 1 : offset + providers.length;
+
       return {
-        providers,
-        total: providers.length,
-        limit,
-        offset,
+        data: providers.map(provider => ({
+          id: provider.id,
+          name: provider.name,
+          type: provider.type,
+          specialties: provider.specialties || [],
+          address: provider.address,
+          city: provider.city,
+          province: provider.province,
+          postalCode: provider.postalCode,
+          phone: provider.phone,
+          email: provider.email,
+          networkStatus: provider.networkStatus?.toUpperCase() || 'IN_NETWORK',
+          coordinates: provider.coordinates,
+        })),
+        pagination: {
+          total,
+          limit,
+          offset,
+          hasMore: providers.length === limit,
+        },
       };
     } catch (error) {
       logger.error('Error searching providers', { query, error: error.message });
@@ -115,6 +135,7 @@ class ProviderService {
 
   /**
    * Search local provider cache
+   * Returns OpenAPI-compliant paginated response
    */
   async _searchLocalProviders({ query, location, type, specialty, limit, offset }) {
     const conditions = [];
@@ -147,6 +168,13 @@ class ProviderService {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    // Get total count
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM providers ${whereClause}`,
+      params.slice(0, paramCount - 1)
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
     params.push(limit);
     params.push(offset);
 
@@ -172,13 +200,26 @@ class ProviderService {
     );
 
     return {
-      providers: result.rows.map(row => ({
-        ...row,
+      data: result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        specialties: row.specialties || [],
+        address: row.address,
+        city: row.city,
+        province: row.province,
+        postalCode: row.postal_code,
+        phone: row.phone,
+        email: row.email,
+        networkStatus: row.network_status?.toUpperCase() || 'IN_NETWORK',
         coordinates: row.metadata?.coordinates,
       })),
-      total: result.rowCount,
-      limit,
-      offset,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
       source: 'cache',
     };
   }

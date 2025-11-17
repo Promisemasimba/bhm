@@ -1,11 +1,13 @@
 const User = require('../models/User');
 const legacyClient = require('../clients/legacyClient');
+const membershipService = require('./membershipService');
 const logger = require('../config/logger');
 
 class MemberService {
   /**
    * Get home dashboard data
    * Aggregates member info, plan, dependants
+   * Uses synced database for fast member/dependant lookups
    */
   async getHomeDashboard(userId) {
     const user = await User.findById(userId);
@@ -17,35 +19,67 @@ class MemberService {
     }
 
     try {
-      // Fetch data from legacy system
-      const [memberDetails, dependants, recentClaims] = await Promise.all([
-        legacyClient.getMemberDetails(user.legacy_member_id),
-        legacyClient.getMemberDependants(user.legacy_member_id),
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+
+      // Fetch data from synced database (fast) and legacy system (for claims)
+      const [member, dependants, recentClaims] = await Promise.all([
+        membershipService.getMemberByLegacyId(legacyMemberId),
+        membershipService.getDependantsForMember(legacyMemberId),
         legacyClient.getMemberClaims(user.legacy_member_id).then(claims => claims.slice(0, 5)),
       ]);
 
+      if (!member) {
+        const error = new Error('Member data not found');
+        error.status = 404;
+        throw error;
+      }
+
+      // Return in OpenAPI HomeSummary format
       return {
-        member: {
-          memberNumber: user.member_number || memberDetails.member.memberNumber,
-          firstName: user.first_name || memberDetails.member.firstName,
-          lastName: user.last_name || memberDetails.member.lastName,
-          status: memberDetails.member.status,
+        memberInfo: {
+          memberNumber: member.member_no,
+          fullName: `${member.firstname || ''} ${member.surname || ''}`.trim(),
+          status: member.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
         },
-        plan: memberDetails.plan,
-        coverage: memberDetails.coverage,
-        dependants: {
-          count: dependants.length,
-          list: dependants.slice(0, 3), // Show first 3
+        plan: {
+          name: member.plan || 'Standard Plan',
+          status: member.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
         },
-        recentClaims: {
-          count: recentClaims.length,
-          list: recentClaims,
-        },
+        dependantsCount: dependants.length,
+        recentClaims: recentClaims.map(claim => ({
+          id: claim.id,
+          claimNumber: claim.claimNumber,
+          date: claim.date,
+          provider: claim.provider,
+          amount: claim.amount,
+          status: claim.status,
+          type: claim.type,
+        })),
         quickActions: [
-          { id: 'submit_claim', label: 'Submit Claim', icon: 'file-plus' },
-          { id: 'find_provider', label: 'Find Provider', icon: 'search' },
-          { id: 'view_card', label: 'View Card', icon: 'id-card' },
-          { id: 'download_certificate', label: 'Certificate', icon: 'download' },
+          {
+            id: 'submit_claim',
+            label: 'Submit Claim',
+            icon: 'file-plus',
+            route: '/claims/submit',
+          },
+          {
+            id: 'find_provider',
+            label: 'Find Provider',
+            icon: 'search',
+            route: '/providers/search',
+          },
+          {
+            id: 'view_card',
+            label: 'Digital Card',
+            icon: 'id-card',
+            route: '/card',
+          },
+          {
+            id: 'view_dependants',
+            label: 'Dependants',
+            icon: 'users',
+            route: '/dependants',
+          },
         ],
       };
     } catch (error) {
@@ -56,6 +90,7 @@ class MemberService {
 
   /**
    * Get digital card information
+   * Uses synced database for fast member lookups
    */
   async getDigitalCard(userId) {
     const user = await User.findById(userId);
@@ -67,16 +102,25 @@ class MemberService {
     }
 
     try {
-      const memberDetails = await legacyClient.getMemberDetails(user.legacy_member_id);
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+      const member = await membershipService.getMemberByLegacyId(legacyMemberId);
 
+      if (!member) {
+        const error = new Error('Member data not found');
+        error.status = 404;
+        throw error;
+      }
+
+      // Return in OpenAPI DigitalCard format
       return {
-        memberNumber: user.member_number || memberDetails.member.memberNumber,
-        memberName: `${user.first_name || memberDetails.member.firstName} ${user.last_name || memberDetails.member.lastName}`,
-        planName: memberDetails.plan?.name,
-        effectiveDate: memberDetails.member.effectiveDate,
-        expiryDate: memberDetails.member.expiryDate,
-        qrCode: this._generateQRCodeData(user.member_number || memberDetails.member.memberNumber),
-        barcode: user.member_number || memberDetails.member.memberNumber,
+        memberNumber: member.member_no,
+        memberName: `${member.firstname || ''} ${member.surname || ''}`.trim(),
+        planName: member.plan || 'Standard Plan',
+        effectiveDate: member.date_of_joining || null,
+        expiryDate: null, // Most plans don't have expiry
+        status: member.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
+        qrCode: this._generateQRCodeData(member.member_no),
+        barcode: member.member_no,
       };
     } catch (error) {
       logger.error('Error fetching digital card', { userId, error: error.message });
@@ -86,6 +130,7 @@ class MemberService {
 
   /**
    * Get list of dependants
+   * Uses synced database for fast dependant lookups
    */
   async getDependants(userId) {
     const user = await User.findById(userId);
@@ -97,23 +142,40 @@ class MemberService {
     }
 
     try {
-      const dependants = await legacyClient.getMemberDependants(user.legacy_member_id);
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
 
+      // Get principal member and dependants from synced database
+      const [member, dependants] = await Promise.all([
+        membershipService.getMemberByLegacyId(legacyMemberId),
+        membershipService.getDependantsForMember(legacyMemberId),
+      ]);
+
+      if (!member) {
+        const error = new Error('Member data not found');
+        error.status = 404;
+        throw error;
+      }
+
+      // Return in OpenAPI DependantsList format
       return {
         principal: {
-          firstName: user.first_name,
-          lastName: user.last_name,
-          memberNumber: user.member_number,
+          id: member.legacy_member_id.toString(),
+          memberNumber: member.member_no,
+          fullName: `${member.firstname || ''} ${member.surname || ''}`.trim(),
           relationship: 'Principal Member',
+          status: member.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
         },
         dependants: dependants.map(dep => ({
-          id: dep.id,
-          firstName: dep.firstName,
-          lastName: dep.lastName,
-          relationship: dep.relationship,
-          dateOfBirth: dep.dateOfBirth,
-          status: dep.status,
+          id: dep.legacy_member_id.toString(),
+          memberNumber: dep.member_no,
+          firstName: dep.firstname,
+          lastName: dep.surname,
+          fullName: `${dep.firstname || ''} ${dep.surname || ''}`.trim(),
+          relationship: 'Dependant', // Legacy system doesn't specify relationship type
+          dateOfBirth: dep.date_of_birth,
+          status: dep.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
         })),
+        totalCount: dependants.length,
       };
     } catch (error) {
       logger.error('Error fetching dependants', { userId, error: error.message });

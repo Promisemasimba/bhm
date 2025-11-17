@@ -6,7 +6,8 @@ const { v4: uuidv4 } = require('uuid');
 
 class ClaimService {
   /**
-   * Get user's claims
+   * Get user's claims with pagination
+   * Returns OpenAPI-compliant paginated response
    */
   async getUserClaims(userId, { limit = 50, offset = 0, status } = {}) {
     const user = await User.findById(userId);
@@ -32,12 +33,26 @@ class ClaimService {
 
       // Apply pagination
       const paginatedClaims = filteredClaims.slice(offset, offset + limit);
+      const total = filteredClaims.length;
 
+      // Return OpenAPI-compliant paginated response
       return {
-        claims: paginatedClaims,
-        total: filteredClaims.length,
-        limit,
-        offset,
+        data: paginatedClaims.map(claim => ({
+          id: claim.id,
+          claimNumber: claim.claimNumber,
+          type: claim.type,
+          provider: claim.provider,
+          date: claim.date,
+          amount: claim.amount,
+          status: claim.status.toUpperCase(),
+          description: claim.description,
+        })),
+        pagination: {
+          total,
+          limit,
+          offset,
+          hasMore: offset + limit < total,
+        },
       };
     } catch (error) {
       logger.error('Error fetching claims', { userId, error: error.message });
@@ -264,6 +279,7 @@ class ClaimService {
 
   /**
    * Get claims from local cache
+   * Returns OpenAPI-compliant paginated response
    */
   async _getLocalClaims(userId, { limit, offset, status }) {
     const conditions = ['user_id = $1'];
@@ -275,6 +291,13 @@ class ClaimService {
       params.push(status);
       paramCount++;
     }
+
+    // Get total count
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM claims WHERE ${conditions.join(' AND ')}`,
+      params.slice(0, paramCount - 1)
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
 
     params.push(limit);
     params.push(offset);
@@ -299,10 +322,22 @@ class ClaimService {
     );
 
     return {
-      claims: result.rows,
-      total: result.rowCount,
-      limit,
-      offset,
+      data: result.rows.map(claim => ({
+        id: claim.id,
+        claimNumber: claim.claim_number,
+        type: claim.type,
+        provider: claim.provider,
+        date: claim.date,
+        amount: claim.amount,
+        status: claim.status.toUpperCase(),
+        description: claim.description,
+      })),
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
       source: 'cache',
     };
   }
