@@ -251,6 +251,21 @@ router.get('/dependants', async (req, res, next) => {
 });
 
 /**
+ * GET /internal/v1/dependants/:dependantId
+ * Get specific dependant by ID
+ */
+router.get('/dependants/:dependantId', async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { dependantId } = req.params;
+    const dependant = await memberService.getDependantById(userId, dependantId);
+    res.json(dependant);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /internal/v1/membership-certificate
  * Get membership certificate
  */

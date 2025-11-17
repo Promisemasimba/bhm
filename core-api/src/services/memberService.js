@@ -184,6 +184,56 @@ class MemberService {
   }
 
   /**
+   * Get specific dependant by ID
+   */
+  async getDependantById(userId, dependantId) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    try {
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+
+      // Get all dependants for this principal member
+      const dependants = await membershipService.getDependantsForMember(legacyMemberId);
+
+      // Find the specific dependant
+      const dependant = dependants.find(
+        dep => dep.legacy_member_id.toString() === dependantId || dep.member_no === dependantId
+      );
+
+      if (!dependant) {
+        const error = new Error('Dependant not found');
+        error.status = 404;
+        throw error;
+      }
+
+      // Return in OpenAPI format
+      return {
+        id: dependant.legacy_member_id.toString(),
+        memberNumber: dependant.member_no,
+        firstName: dependant.firstname,
+        lastName: dependant.surname,
+        fullName: `${dependant.firstname || ''} ${dependant.surname || ''}`.trim(),
+        relationship: 'Dependant',
+        dateOfBirth: dependant.date_of_birth,
+        status: dependant.member_status === 'Active' ? 'ACTIVE' : 'INACTIVE',
+        plan: dependant.plan || 'Standard Plan',
+      };
+    } catch (error) {
+      if (error.status === 404) {
+        throw error;
+      }
+      logger.error('Error fetching dependant', { userId, dependantId, error: error.message });
+      throw new Error('Failed to load dependant details');
+    }
+  }
+
+  /**
    * Get membership certificate
    */
   async getMembershipCertificate(userId) {

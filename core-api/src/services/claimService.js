@@ -63,6 +63,59 @@ class ClaimService {
   }
 
   /**
+   * Get specific claim by ID
+   */
+  async getClaimById(userId, claimId) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    try {
+      // First try to get from local cache
+      const cachedClaim = await this._getLocalClaim(userId, claimId);
+
+      if (cachedClaim) {
+        return cachedClaim;
+      }
+
+      // If not in cache, fetch from legacy system
+      const claims = await legacyClient.getMemberClaims(user.legacy_member_id);
+      const claim = claims.find(c => c.id === claimId || c.claimNumber === claimId);
+
+      if (!claim) {
+        const error = new Error('Claim not found');
+        error.status = 404;
+        throw error;
+      }
+
+      // Cache it for future use
+      await this._cacheClaimLocal(userId, claim);
+
+      return {
+        id: claim.id,
+        claimNumber: claim.claimNumber,
+        type: claim.type,
+        provider: claim.provider,
+        date: claim.date,
+        amount: claim.amount,
+        status: claim.status.toUpperCase(),
+        description: claim.description,
+        documents: claim.documents || [],
+      };
+    } catch (error) {
+      if (error.status === 404) {
+        throw error;
+      }
+      logger.error('Error fetching claim', { userId, claimId, error: error.message });
+      throw new Error('Failed to fetch claim details');
+    }
+  }
+
+  /**
    * Submit a new claim
    */
   async submitClaim(userId, claimData) {
@@ -339,6 +392,46 @@ class ClaimService {
         hasMore: offset + limit < total,
       },
       source: 'cache',
+    };
+  }
+
+  /**
+   * Get single claim from local cache
+   */
+  async _getLocalClaim(userId, claimId) {
+    const result = await db.query(
+      `SELECT
+        legacy_claim_id as id,
+        claim_number,
+        claim_type as type,
+        provider_name as provider,
+        claim_date as date,
+        amount,
+        status,
+        description,
+        created_at,
+        updated_at
+      FROM claims
+      WHERE user_id = $1 AND (legacy_claim_id = $2 OR claim_number = $2)
+      LIMIT 1`,
+      [userId, claimId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const claim = result.rows[0];
+    return {
+      id: claim.id,
+      claimNumber: claim.claim_number,
+      type: claim.type,
+      provider: claim.provider,
+      date: claim.date,
+      amount: claim.amount,
+      status: claim.status.toUpperCase(),
+      description: claim.description,
+      documents: [], // Documents would need to be fetched separately
     };
   }
 }

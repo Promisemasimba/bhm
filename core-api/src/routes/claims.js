@@ -50,6 +50,21 @@ router.get('/', validateQuery(listClaimsSchema), async (req, res, next) => {
 });
 
 /**
+ * GET /internal/v1/claims/:claimId
+ * Get specific claim by ID
+ */
+router.get('/:claimId', async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { claimId } = req.params;
+    const claim = await claimService.getClaimById(userId, claimId);
+    res.json(claim);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /internal/v1/claims
  * Submit a new claim
  */
