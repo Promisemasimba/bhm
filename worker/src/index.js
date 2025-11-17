@@ -7,6 +7,7 @@ import { handleAuth } from './handlers/auth';
 import { handleUser } from './handlers/user';
 import { handleHome } from './handlers/home';
 import { handleCard } from './handlers/card';
+import { handleCardRequests } from './handlers/cardRequests';
 import { handleDependants } from './handlers/dependants';
 import { handleProviders } from './handlers/providers';
 import { handleClaims } from './handlers/claims';
@@ -104,6 +105,25 @@ export default {
       // Digital card
       if (path === '/api/card' && method === 'GET') {
         return handleCard(request, env, requestId, token);
+      }
+
+      // Physical card requests
+      if (path === '/api/cards/physical-requests' && method === 'GET') {
+        return handleCardRequests.list(request, env, requestId, token);
+      }
+
+      if (path === '/api/cards/physical-requests' && method === 'POST') {
+        return handleCardRequests.create(request, env, requestId, token);
+      }
+
+      if (path.match(/^\/api\/cards\/physical-requests\/[^/]+$/) && method === 'GET') {
+        const cardRequestId = path.split('/')[4];
+        return handleCardRequests.getById(request, env, requestId, token, cardRequestId);
+      }
+
+      if (path.match(/^\/api\/cards\/physical-requests\/[^/]+$/) && method === 'DELETE') {
+        const cardRequestId = path.split('/')[4];
+        return handleCardRequests.cancel(request, env, requestId, token, cardRequestId);
       }
 
       // Dependants

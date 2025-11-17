@@ -13,6 +13,7 @@ const memberRoutes = require('./routes/member');
 const providerRoutes = require('./routes/providers');
 const claimRoutes = require('./routes/claims');
 const supportRoutes = require('./routes/support');
+const cardRequestRoutes = require('./routes/cardRequests');
 
 const app = express();
 
@@ -65,6 +66,7 @@ app.use('/internal/v1', memberRoutes);
 app.use('/internal/v1/providers', providerRoutes);
 app.use('/internal/v1/claims', claimRoutes);
 app.use('/internal/v1/support', supportRoutes);
+app.use('/internal/v1/cards', cardRequestRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

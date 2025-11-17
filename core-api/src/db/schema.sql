@@ -159,6 +159,69 @@ CREATE INDEX idx_providers_province ON providers(province);
 CREATE INDEX idx_providers_type ON providers(type);
 CREATE INDEX idx_providers_location ON providers USING GIST(location);
 
+-- Physical card requests
+CREATE TABLE IF NOT EXISTS card_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  request_type VARCHAR(50) NOT NULL CHECK (request_type IN ('NEW', 'REPLACEMENT', 'RENEWAL')),
+  reason TEXT,
+  delivery_address TEXT NOT NULL,
+  delivery_city VARCHAR(100),
+  delivery_province VARCHAR(100),
+  delivery_postal_code VARCHAR(20),
+  contact_phone VARCHAR(20),
+  status VARCHAR(50) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'REJECTED', 'CANCELLED')),
+  tracking_number VARCHAR(100),
+  requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  approved_at TIMESTAMP,
+  shipped_at TIMESTAMP,
+  delivered_at TIMESTAMP,
+  rejected_reason TEXT,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_card_requests_user_id ON card_requests(user_id);
+CREATE INDEX idx_card_requests_status ON card_requests(status);
+CREATE INDEX idx_card_requests_requested_at ON card_requests(requested_at DESC);
+
+-- Support queries
+CREATE TABLE IF NOT EXISTS support_queries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subject VARCHAR(255) NOT NULL,
+  category VARCHAR(100) CHECK (category IN ('BILLING', 'CLAIMS', 'COVERAGE', 'TECHNICAL', 'ACCOUNT', 'GENERAL', 'COMPLAINT')),
+  priority VARCHAR(50) DEFAULT 'MEDIUM' CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'URGENT')),
+  description TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'IN_PROGRESS', 'WAITING_FOR_USER', 'RESOLVED', 'CLOSED')),
+  assigned_to VARCHAR(100),
+  resolution TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TIMESTAMP,
+  closed_at TIMESTAMP
+);
+
+CREATE INDEX idx_support_queries_user_id ON support_queries(user_id);
+CREATE INDEX idx_support_queries_status ON support_queries(status);
+CREATE INDEX idx_support_queries_category ON support_queries(category);
+CREATE INDEX idx_support_queries_created_at ON support_queries(created_at DESC);
+
+-- Support query messages (for conversation thread)
+CREATE TABLE IF NOT EXISTS support_query_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  query_id UUID NOT NULL REFERENCES support_queries(id) ON DELETE CASCADE,
+  sender_type VARCHAR(50) NOT NULL CHECK (sender_type IN ('USER', 'SUPPORT')),
+  sender_name VARCHAR(255),
+  message TEXT NOT NULL,
+  attachments JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_support_query_messages_query_id ON support_query_messages(query_id);
+CREATE INDEX idx_support_query_messages_created_at ON support_query_messages(created_at);
+
 -- Audit log
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -196,4 +259,10 @@ CREATE TRIGGER update_claims_updated_at BEFORE UPDATE ON claims
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_providers_updated_at BEFORE UPDATE ON providers
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_card_requests_updated_at BEFORE UPDATE ON card_requests
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_support_queries_updated_at BEFORE UPDATE ON support_queries
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
