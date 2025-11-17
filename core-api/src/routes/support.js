@@ -1,5 +1,34 @@
 const express = require('express');
 const router = express.Router();
+const Joi = require('joi');
+const supportQueryService = require('../services/supportQueryService');
+const { validateBody, validateQuery } = require('../middleware/validation');
+
+// Validation schemas
+const listQueriesSchema = Joi.object({
+  limit: Joi.number().integer().min(1).max(100).default(50),
+  offset: Joi.number().integer().min(0).default(0),
+  status: Joi.string().valid('OPEN', 'IN_PROGRESS', 'WAITING_FOR_USER', 'RESOLVED', 'CLOSED').optional(),
+  category: Joi.string().valid('BILLING', 'CLAIMS', 'COVERAGE', 'TECHNICAL', 'ACCOUNT', 'GENERAL', 'COMPLAINT').optional(),
+});
+
+const createQuerySchema = Joi.object({
+  subject: Joi.string().min(1).max(255).required(),
+  category: Joi.string().valid('BILLING', 'CLAIMS', 'COVERAGE', 'TECHNICAL', 'ACCOUNT', 'GENERAL', 'COMPLAINT').required(),
+  priority: Joi.string().valid('LOW', 'MEDIUM', 'HIGH', 'URGENT').optional(),
+  description: Joi.string().min(10).required(),
+});
+
+const addMessageSchema = Joi.object({
+  message: Joi.string().min(1).required(),
+  attachments: Joi.array().items(
+    Joi.object({
+      filename: Joi.string().required(),
+      url: Joi.string().uri().required(),
+      size: Joi.number().integer().positive().optional(),
+    })
+  ).optional(),
+});
 
 /**
  * GET /internal/v1/support/contact-options
@@ -70,6 +99,79 @@ router.get('/contact-options', async (req, res, next) => {
         },
       ],
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /internal/v1/support/queries
+ * List user's support queries
+ */
+router.get('/queries', validateQuery(listQueriesSchema), async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const result = await supportQueryService.getUserQueries(userId, req.query);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /internal/v1/support/queries
+ * Create a new support query
+ */
+router.post('/queries', validateBody(createQuerySchema), async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const query = await supportQueryService.createQuery(userId, req.body);
+    res.status(201).json(query);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /internal/v1/support/queries/:queryId
+ * Get specific support query with messages
+ */
+router.get('/queries/:queryId', async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { queryId } = req.params;
+    const query = await supportQueryService.getQueryById(userId, queryId);
+    res.json(query);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /internal/v1/support/queries/:queryId/messages
+ * Add a message to a support query
+ */
+router.post('/queries/:queryId/messages', validateBody(addMessageSchema), async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { queryId } = req.params;
+    const message = await supportQueryService.addMessage(userId, queryId, req.body);
+    res.status(201).json(message);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /internal/v1/support/queries/:queryId
+ * Close a support query
+ */
+router.delete('/queries/:queryId', async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { queryId } = req.params;
+    const result = await supportQueryService.closeQuery(userId, queryId);
+    res.json(result);
   } catch (err) {
     next(err);
   }

@@ -161,6 +161,29 @@ export default {
         return handleSupport.getContactOptions(request, env, requestId, token);
       }
 
+      if (path === '/api/support/queries' && method === 'GET') {
+        return handleSupport.listQueries(request, env, requestId, token);
+      }
+
+      if (path === '/api/support/queries' && method === 'POST') {
+        return handleSupport.createQuery(request, env, requestId, token);
+      }
+
+      if (path.match(/^\/api\/support\/queries\/[^/]+$/) && method === 'GET') {
+        const queryId = path.split('/')[4];
+        return handleSupport.getQueryById(request, env, requestId, token, queryId);
+      }
+
+      if (path.match(/^\/api\/support\/queries\/[^/]+$/) && method === 'DELETE') {
+        const queryId = path.split('/')[4];
+        return handleSupport.closeQuery(request, env, requestId, token, queryId);
+      }
+
+      if (path.match(/^\/api\/support\/queries\/[^/]+\/messages$/) && method === 'POST') {
+        const queryId = path.split('/')[4];
+        return handleSupport.addMessage(request, env, requestId, token, queryId);
+      }
+
       // 404 Not Found
       return errorResponse('Not found', 404, requestId);
 
