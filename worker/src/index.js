@@ -128,7 +128,26 @@ export default {
 
       // Dependants
       if (path === '/api/dependants' && method === 'GET') {
-        return handleDependants(request, env, requestId, token);
+        return handleDependants.list(request, env, requestId, token);
+      }
+
+      if (path === '/api/dependants' && method === 'POST') {
+        return handleDependants.create(request, env, requestId, token);
+      }
+
+      if (path.match(/^\/api\/dependants\/[^/]+$/) && method === 'GET') {
+        const dependantId = path.split('/')[3];
+        return handleDependants.getById(request, env, requestId, token, dependantId);
+      }
+
+      if (path.match(/^\/api\/dependants\/[^/]+$/) && method === 'PATCH') {
+        const dependantId = path.split('/')[3];
+        return handleDependants.update(request, env, requestId, token, dependantId);
+      }
+
+      if (path.match(/^\/api\/dependants\/[^/]+$/) && method === 'DELETE') {
+        const dependantId = path.split('/')[3];
+        return handleDependants.remove(request, env, requestId, token, dependantId);
       }
 
       // Provider search

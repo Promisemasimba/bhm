@@ -265,6 +265,73 @@ router.get('/dependants/:dependantId', async (req, res, next) => {
   }
 });
 
+// Validation schemas for dependant CRUD operations
+const createDependantSchema = Joi.object({
+  firstName: Joi.string().min(1).max(100).required(),
+  lastName: Joi.string().min(1).max(100).required(),
+  idNumber: Joi.string().optional(),
+  dateOfBirth: Joi.string().isoDate().required(),
+  relationship: Joi.string()
+    .valid('SPOUSE', 'CHILD', 'PARENT', 'SIBLING', 'OTHER')
+    .required(),
+  gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER').optional(),
+});
+
+const updateDependantSchema = Joi.object({
+  firstName: Joi.string().min(1).max(100).optional(),
+  lastName: Joi.string().min(1).max(100).optional(),
+  idNumber: Joi.string().optional(),
+  dateOfBirth: Joi.string().isoDate().optional(),
+  relationship: Joi.string()
+    .valid('SPOUSE', 'CHILD', 'PARENT', 'SIBLING', 'OTHER')
+    .optional(),
+  gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER').optional(),
+}).min(1); // At least one field must be provided
+
+/**
+ * POST /internal/v1/dependants
+ * Create a new dependant
+ */
+router.post('/dependants', validateBody(createDependantSchema), async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const dependant = await memberService.createDependant(userId, req.body);
+    res.status(201).json(dependant);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /internal/v1/dependants/:dependantId
+ * Update dependant information
+ */
+router.patch('/dependants/:dependantId', validateBody(updateDependantSchema), async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { dependantId } = req.params;
+    const dependant = await memberService.updateDependant(userId, dependantId, req.body);
+    res.json(dependant);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /internal/v1/dependants/:dependantId
+ * Remove a dependant
+ */
+router.delete('/dependants/:dependantId', async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const { dependantId } = req.params;
+    const result = await memberService.deleteDependant(userId, dependantId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * GET /internal/v1/membership-certificate
  * Get membership certificate

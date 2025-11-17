@@ -188,6 +188,87 @@ class LegacyClient {
   }
 
   /**
+   * Create a new dependant
+   * @param {string} legacyMemberId - Principal member's legacy ID
+   * @param {Object} dependantData - Dependant data
+   * @returns {Promise<Object>} Created dependant
+   */
+  async createDependant(legacyMemberId, dependantData) {
+    try {
+      const response = await this.apiClient.post(`/members/${legacyMemberId}/dependants`, {
+        first_name: dependantData.firstName,
+        last_name: dependantData.lastName,
+        id_number: dependantData.idNumber,
+        date_of_birth: dependantData.dateOfBirth,
+        relationship: dependantData.relationship,
+        gender: dependantData.gender,
+      });
+      return this._normalizeDependant(response.data);
+    } catch (error) {
+      logger.error('Error creating dependant', { legacyMemberId, error: error.message });
+      if (error.response?.status === 400) {
+        throw new Error(error.response?.data?.message || 'Invalid dependant data');
+      }
+      throw new Error('Failed to create dependant in legacy system');
+    }
+  }
+
+  /**
+   * Update dependant information
+   * @param {string} dependantId - Dependant ID
+   * @param {Object} updateData - Updated dependant data
+   * @returns {Promise<Object>} Updated dependant
+   */
+  async updateDependant(dependantId, updateData) {
+    try {
+      const payload = {};
+      if (updateData.firstName) payload.first_name = updateData.firstName;
+      if (updateData.lastName) payload.last_name = updateData.lastName;
+      if (updateData.idNumber) payload.id_number = updateData.idNumber;
+      if (updateData.dateOfBirth) payload.date_of_birth = updateData.dateOfBirth;
+      if (updateData.relationship) payload.relationship = updateData.relationship;
+      if (updateData.gender) payload.gender = updateData.gender;
+
+      const response = await this.apiClient.patch(`/dependants/${dependantId}`, payload);
+      return this._normalizeDependant(response.data);
+    } catch (error) {
+      logger.error('Error updating dependant', { dependantId, error: error.message });
+      if (error.response?.status === 404) {
+        const err = new Error('Dependant not found');
+        err.status = 404;
+        throw err;
+      }
+      if (error.response?.status === 400) {
+        throw new Error(error.response?.data?.message || 'Invalid dependant data');
+      }
+      throw new Error('Failed to update dependant in legacy system');
+    }
+  }
+
+  /**
+   * Delete/remove a dependant
+   * @param {string} dependantId - Dependant ID
+   * @returns {Promise<Object>} Deletion confirmation
+   */
+  async deleteDependant(dependantId) {
+    try {
+      const response = await this.apiClient.delete(`/dependants/${dependantId}`);
+      return { success: true, message: 'Dependant removed successfully' };
+    } catch (error) {
+      logger.error('Error deleting dependant', { dependantId, error: error.message });
+      if (error.response?.status === 404) {
+        const err = new Error('Dependant not found');
+        err.status = 404;
+        throw err;
+      }
+      if (error.response?.status === 400) {
+        throw new Error(error.response?.data?.message || 'Cannot remove dependant');
+      }
+      throw new Error('Failed to remove dependant from legacy system');
+    }
+  }
+
+  /**
    * Get membership certificate data
    * @param {string} legacyMemberId - Legacy member ID
    * @returns {Promise<Object>} Certificate data

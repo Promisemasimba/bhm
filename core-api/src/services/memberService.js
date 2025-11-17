@@ -234,6 +234,160 @@ class MemberService {
   }
 
   /**
+   * Create a new dependant
+   * Adds a dependant to the principal member's account via legacy API
+   */
+  async createDependant(userId, dependantData) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    try {
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+
+      // Validate required fields
+      if (!dependantData.firstName || !dependantData.lastName) {
+        const error = new Error('First name and last name are required');
+        error.status = 400;
+        throw error;
+      }
+
+      if (!dependantData.dateOfBirth) {
+        const error = new Error('Date of birth is required');
+        error.status = 400;
+        throw error;
+      }
+
+      if (!dependantData.relationship) {
+        const error = new Error('Relationship is required');
+        error.status = 400;
+        throw error;
+      }
+
+      // Create dependant in legacy system
+      const createdDependant = await legacyClient.createDependant(legacyMemberId, dependantData);
+
+      logger.info('Dependant created', { userId, legacyMemberId, dependantId: createdDependant.id });
+
+      // Return in OpenAPI format
+      return {
+        id: createdDependant.id.toString(),
+        firstName: createdDependant.firstName,
+        lastName: createdDependant.lastName,
+        fullName: `${createdDependant.firstName} ${createdDependant.lastName}`.trim(),
+        relationship: createdDependant.relationship,
+        dateOfBirth: createdDependant.dateOfBirth,
+        status: createdDependant.status || 'ACTIVE',
+      };
+    } catch (error) {
+      if (error.status === 400 || error.status === 404) {
+        throw error;
+      }
+      logger.error('Error creating dependant', { userId, error: error.message });
+      throw new Error('Failed to create dependant');
+    }
+  }
+
+  /**
+   * Update dependant information
+   * Updates a dependant's details via legacy API
+   */
+  async updateDependant(userId, dependantId, updateData) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    try {
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+
+      // Verify dependant belongs to this principal member
+      const dependants = await membershipService.getDependantsForMember(legacyMemberId);
+      const dependant = dependants.find(
+        dep => dep.legacy_member_id.toString() === dependantId || dep.member_no === dependantId
+      );
+
+      if (!dependant) {
+        const error = new Error('Dependant not found or does not belong to this member');
+        error.status = 404;
+        throw error;
+      }
+
+      // Update via legacy API
+      const updatedDependant = await legacyClient.updateDependant(dependant.legacy_member_id, updateData);
+
+      logger.info('Dependant updated', { userId, dependantId, updates: Object.keys(updateData) });
+
+      // Return in OpenAPI format
+      return {
+        id: updatedDependant.id.toString(),
+        firstName: updatedDependant.firstName,
+        lastName: updatedDependant.lastName,
+        fullName: `${updatedDependant.firstName} ${updatedDependant.lastName}`.trim(),
+        relationship: updatedDependant.relationship,
+        dateOfBirth: updatedDependant.dateOfBirth,
+        status: updatedDependant.status || 'ACTIVE',
+      };
+    } catch (error) {
+      if (error.status === 400 || error.status === 404) {
+        throw error;
+      }
+      logger.error('Error updating dependant', { userId, dependantId, error: error.message });
+      throw new Error('Failed to update dependant');
+    }
+  }
+
+  /**
+   * Delete/remove a dependant
+   * Removes a dependant from the principal member's account via legacy API
+   */
+  async deleteDependant(userId, dependantId) {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new Error('User not found');
+      error.status = 404;
+      throw error;
+    }
+
+    try {
+      const legacyMemberId = parseInt(user.legacy_member_id, 10);
+
+      // Verify dependant belongs to this principal member
+      const dependants = await membershipService.getDependantsForMember(legacyMemberId);
+      const dependant = dependants.find(
+        dep => dep.legacy_member_id.toString() === dependantId || dep.member_no === dependantId
+      );
+
+      if (!dependant) {
+        const error = new Error('Dependant not found or does not belong to this member');
+        error.status = 404;
+        throw error;
+      }
+
+      // Delete via legacy API
+      await legacyClient.deleteDependant(dependant.legacy_member_id);
+
+      logger.info('Dependant deleted', { userId, dependantId });
+
+      return { success: true, message: 'Dependant removed successfully' };
+    } catch (error) {
+      if (error.status === 400 || error.status === 404) {
+        throw error;
+      }
+      logger.error('Error deleting dependant', { userId, dependantId, error: error.message });
+      throw new Error('Failed to remove dependant');
+    }
+  }
+
+  /**
    * Get membership certificate
    */
   async getMembershipCertificate(userId) {
